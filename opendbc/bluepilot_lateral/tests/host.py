@@ -31,7 +31,7 @@ elif hasattr(structs, "IQCarControl"):  # IQ.Pilot
     CP_IQ = structs.IQCarParams()
     init_ford_safety_param_iq(CP, CP_IQ, params_dict)
     return CP_IQ.iqSafetyFlags, CP_IQ.lateralInputsRequired
-elif importlib.util.find_spec(__package__.rsplit(".", 2)[0] + ".car.ford.aol"):  # StarPilot: its Ford AOL
+elif True:  # TEST-ONLY local patch: upstream opendbc host, same shape as StarPilot (bits ride the Ford param)
   from ..hosts.starpilot.lateral import BluePilotLateral, FrameInputs as CarControlX, params_from_frame as params_from_cc
   from ..hosts.starpilot.safety_param import (BP_SAFETY_PARAM_SHIFT, bp_safety_param, init_ford_safety_param_starpilot,
                                               lateral_inputs_required as lateral_inputs_required_starpilot)

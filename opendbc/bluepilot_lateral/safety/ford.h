@@ -12,9 +12,11 @@
 // Global Variables
 // ===============================
 
+#ifndef BP_HOST_LATERAL_STATE_IN_STRUCT  // LOCAL PATCH (upstream port)
 bool ford_bp_lateral = false;  // SP safety-param bit 5: BP 4-signal lateral checks instead of stock
 bool ford_bp_pinion_curvature = false;
 const AngleSteeringParams *ford_bp_pinion_params = &ford_pinion_geometry[0];
+#endif
 
 // BluePilot: per-platform geometry for pinion-angle -> curvature conversion (the optional
 // angle_meas source), selected by the 4-bit geometry index in current_safety_param_sp
@@ -42,11 +44,13 @@ const AngleSteeringParams ford_pinion_geometry[FORD_PINION_GEOMETRY_ROWS] = {
   {.slip_factor = -0.00051293030f, .steer_ratio = 17.0f, .wheelbase = 3.270f},    // 12: FORD_RANGER_MK2
 };
 
+#ifndef BP_HOST_LATERAL_STATE_IN_STRUCT  // LOCAL PATCH (upstream port): a host with per-copy safety state keeps these in its state struct
 bool ford_bp_angle_mode_engaged = false;
 int16_t ford_bp_shadow_curvature_raw = 0;  // wire units, scale 1e-6 1/m (LANE_ASSIST_DATA1.md)
 
 int desired_path_angle_last = 0;
 int desired_path_offset_last = 0;
+#endif
 
 
 // ===============================

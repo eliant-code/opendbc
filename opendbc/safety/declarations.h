@@ -325,6 +325,14 @@ typedef struct {
 
   CurvatureSteeringState curvature_state;
 
+  // BluePilot Ford lateral (opendbc/bluepilot_lateral): per-frame state. It must live here, not in plain
+  // globals: every hook runs on two copies of this struct and the decisions are compared, so state kept
+  // outside it would be updated by the first run and the second would check against the new value.
+  int ford_bp_desired_path_angle_last;
+  int ford_bp_desired_path_offset_last;
+  bool ford_bp_angle_mode_engaged;
+  int16_t ford_bp_shadow_curvature_raw;
+
   // time since safety mode has been changed
   uint32_t safety_mode_cnt;
 
@@ -397,6 +405,11 @@ typedef struct {
 
   bool volkswagen_longitudinal;
   bool volkswagen_meb_alt_crc;
+
+  // BluePilot Ford lateral (opendbc/bluepilot_lateral): set by ford_bp_init from the Ford safety param
+  bool ford_bp_lateral;           // BP 4-signal lateral checks instead of stock
+  bool ford_bp_pinion_curvature;  // pinion angle as the curvature measurement source
+  const AngleSteeringParams *ford_bp_pinion_params;
 } SafetySetup;
 
 typedef struct {
