@@ -5,6 +5,10 @@ from opendbc.car import ACCELERATION_DUE_TO_GRAVITY, Bus, DT_CTRL, apply_hystere
 from opendbc.car.ford import fordcan
 from opendbc.car.ford.values import CarControllerParams, FordFlags, CAR
 from opendbc.car.interfaces import CarControllerBase, V_CRUISE_MAX
+# BluePilot lateral. Upstream has no CarControl extension and no second safety param, the same shape as the
+# library's StarPilot host, so its adapter is used as is: startup bits ride the Ford safetyParam (bits 9-14)
+# and openpilot's card.py hands over a FrameInputs each frame (bp_frame_inputs).
+from opendbc.bluepilot_lateral.hosts.starpilot.lateral import BluePilotLateral, FrameInputs
 
 LongCtrlState = structs.CarControl.Actuators.LongControlState
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
@@ -37,6 +41,8 @@ class CarController(CarControllerBase):
     super().__init__(dbc_names, CP)
     self.packer = CANPacker(dbc_names[Bus.pt])
     self.CAN = fordcan.CanBus(CP)
+    self.bp_frame_inputs = FrameInputs()  # BluePilot: filled by card.py every frame
+    self.bp_init()
 
     self.apply_curvature_last = 0
     self.anti_overshoot_curvature_last = 0
@@ -49,8 +55,13 @@ class CarController(CarControllerBase):
     self.lead_distance_bars_last = None
     self.distance_bar_frame = 0
 
+  def bp_init(self):
+    """BluePilot: (re)build the lateral from the startup bits in CP. card.py calls this after it sets them."""
+    self.bp = BluePilotLateral(self.CP, self.packer, self.CAN)
+
   def update(self, CC, CS, now_nanos):
     can_sends = []
+    bp_active = self.bp.update(self.bp_frame_inputs, self.frame)  # BluePilot
 
     actuators = CC.actuators
     hud_control = CC.hudControl
@@ -73,7 +84,10 @@ class CarController(CarControllerBase):
 
     ### lateral control ###
     # send steer msg at 20Hz
-    if (self.frame % CarControllerParams.STEER_STEP) == 0:
+    if bp_active and (self.frame % CarControllerParams.STEER_STEP) == 0:  # BluePilot
+      lat_sends, self.apply_curvature_last = self.bp.step_lateral(CC, CS, actuators, self.apply_curvature_last)
+      can_sends.extend(lat_sends)
+    elif (self.frame % CarControllerParams.STEER_STEP) == 0:
       # Bronco and some other cars consistently overshoot curv requests
       # Apply some deadzone + smoothing convergence to avoid oscillations
       if self.CP.carFingerprint in (CAR.FORD_BRONCO_SPORT_MK1, CAR.FORD_F_150_MK14):
@@ -106,7 +120,9 @@ class CarController(CarControllerBase):
         can_sends.append(fordcan.create_lat_ctl_msg(self.packer, self.CAN, CC.latActive, 0., 0., -self.apply_curvature_last, 0.))
 
     # send lka msg at 33Hz
-    if (self.frame % CarControllerParams.LKA_STEP) == 0:
+    if bp_active and (self.frame % CarControllerParams.LKA_STEP) == 0:  # BluePilot
+      can_sends.append(self.bp.step_lka(CC, hud_control))
+    elif (self.frame % CarControllerParams.LKA_STEP) == 0:
       can_sends.append(fordcan.create_lka_msg(self.packer, self.CAN))
 
     ### longitudinal control ###

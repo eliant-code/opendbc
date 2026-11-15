@@ -51,8 +51,10 @@ class CarInterface(CarInterfaceBase):
       cfgs.insert(0, get_safety_config(structs.CarParams.SafetyModel.noOutput))
     ret.safetyConfigs = cfgs
 
-    ret.alphaLongitudinalAvailable = ret.radarUnavailable
-    if alpha_long or not ret.radarUnavailable:
+    # BluePilot behaviour: the openpilot longitudinal toggle decides for every Ford. Off keeps Ford's own
+    # cruise (and its intelligent/speed-sign modes); on is openpilot longitudinal (experimental mode).
+    ret.alphaLongitudinalAvailable = True
+    if alpha_long:
       ret.safetyConfigs[-1].safetyParam |= FordSafetyFlags.LONG_CONTROL.value
       ret.openpilotLongitudinalControl = True
 
