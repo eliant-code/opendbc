@@ -353,6 +353,14 @@ static safety_config ford_init(uint16_t param) {
     {FORD_LateralMotionControl, 0, 8, .check_relay = true},
   };
 
+  // EliPilot: CAN stock ACC (openpilot longitudinal toggle off). Without ACCDATA here, the camera's ACCDATA is
+  // forwarded to the car instead of blocked (check_relay blocks forwarding); with it blocked and openpilot
+  // sending none, the car's ACC faults. Same list as BluePilot's FORD_STOCK_TX_MSGS.
+  static const CanMsg FORD_STOCK_TX_MSGS[] = {
+    FORD_COMMON_TX_MSGS
+    {FORD_LateralMotionControl, 0, 8, .check_relay = true},
+  };
+
   const uint16_t FORD_PARAM_CANFD = 2;
   const bool ford_canfd = GET_FLAG(param, FORD_PARAM_CANFD);
 
@@ -366,7 +374,12 @@ static safety_config ford_init(uint16_t param) {
     }
 #endif
   } else {
-    ret = BUILD_SAFETY_CFG(ford_rx_checks, FORD_LONG_TX_MSGS);
+    const uint16_t FORD_PARAM_LONG_CONTROL = 1;
+    if (GET_FLAG(param, FORD_PARAM_LONG_CONTROL)) {
+      ret = BUILD_SAFETY_CFG(ford_rx_checks, FORD_LONG_TX_MSGS);
+    } else {
+      ret = BUILD_SAFETY_CFG(ford_rx_checks, FORD_STOCK_TX_MSGS);
+    }
   }
 
   // BluePilot: the startup bits ride the Ford safety param at bits 9-14 (upstream has no second safety
