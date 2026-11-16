@@ -1,0 +1,36 @@
+name: bluepilot port checks
+
+# Test-only branch (bp-lateral-upstream-ci): the install branch, bp-lateral-upstream, is not changed by this.
+on:
+  push:
+    branches: [bp-lateral-upstream-ci]
+  workflow_dispatch:
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+    - uses: actions/checkout@v7
+    - name: setup
+      run: ./setup.sh
+
+    - name: BluePilot library safety tests (incl. pinion geometry table)
+      if: always()
+      run: source setup.sh && python -m pytest opendbc/bluepilot_lateral/safety/tests -q -rf
+
+    - name: BluePilot library python tests
+      if: always()
+      run: source setup.sh && python -m pytest opendbc/bluepilot_lateral/tests -q -rf
+
+    - name: upstream safety suite (all brands, coverage)
+      if: always()
+      run: ./opendbc/safety/tests/test.sh
+
+    - name: upstream unit tests (car interfaces etc.)
+      if: always()
+      run: source setup.sh && unittest-parallel -j4
+
+    - name: MISRA C:2012 (panda safety style rules)
+      if: always()
+      run: source setup.sh && opendbc/safety/tests/misra/test_misra.sh
