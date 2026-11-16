@@ -22,6 +22,23 @@
 #define FORD_MAIN_BUS 0U
 #define FORD_CAM_BUS  2U
 
+#define FORD_INACTIVE_CURVATURE 1000U
+#define FORD_INACTIVE_CURVATURE_RATE 4096U
+#define FORD_INACTIVE_PATH_OFFSET 512U
+#define FORD_INACTIVE_PATH_ANGLE 1000U
+
+#define FORD_CANFD_INACTIVE_CURVATURE_RATE 1024U
+
+// BluePilot: the Ford 4-signal lateral checks, pinion angle_meas source and angle-mode state, from the
+// vendored bluepilot_lateral library. Its state lives in upstream's per-copy `safety` / `safety_setup`
+// structs (declarations.h; every hook runs on two copies and the decisions are compared). Included here,
+// before any code, so it only depends on the defines above and the bindings below.
+#define BP_HOST_CURVATURE_TO_CAN 50000.0f  // CAN units per rad/m, also FORD_STEERING_LIMITS.curvature_to_can
+#define BP_HOST_CURVATURE_STATE safety.curvature_state
+#define BP_HOST_LAT_ALLOWED() (safety.controls_allowed)
+#define BP_HOST_SPEED_MISMATCH_CHECK() speed_mismatch_check((float)safety.vehicle_speed_2.values[0] / VEHICLE_SPEED_FACTOR)
+#include "opendbc/bluepilot_lateral/safety/ford.h"
+
 static uint8_t ford_get_counter(const CANPacket_t *msg) {
   uint8_t cnt = 0;
   if (msg->addr == FORD_BrakeSysFeatures) {
@@ -88,51 +105,15 @@ static bool ford_get_quality_flag_valid(const CANPacket_t *msg) {
   return valid;
 }
 
-#define FORD_INACTIVE_CURVATURE 1000U
-#define FORD_INACTIVE_CURVATURE_RATE 4096U
-#define FORD_INACTIVE_PATH_OFFSET 512U
-#define FORD_INACTIVE_PATH_ANGLE 1000U
-
-#define FORD_CANFD_INACTIVE_CURVATURE_RATE 1024U
-
 static const CurvatureSteeringLimits FORD_STEERING_LIMITS = {
   .max_curvature = 1000,              // 0.02 rad/m * curvature_to_can
-  .curvature_to_can = 50000,          // CAN units per rad/m
+  .curvature_to_can = BP_HOST_CURVATURE_TO_CAN,  // CAN units per rad/m
   .frequency = 20,                    // Hz
   .max_curvature_error = 100,         // 0.002 rad/m * curvature_to_can
   .curvature_error_min_speed = 10.0,  // m/s
   .max_steer_power = 0,               // disabled, Ford has no steed power signal
 };
 
-// BluePilot: the Ford 4-signal lateral checks, pinion angle_meas source and angle-mode state, from the
-// vendored bluepilot_lateral library. The library is written against the older opendbc safety layout
-// where state was bare globals; upstream now keeps it in the `safety` struct, and runs every hook on two
-// copies of that struct. The bindings below point the library at the struct. `vehicle_speed` and the
-// library's seven state variables have no binding, so they are mapped onto struct members for
-// the duration of the include only and undefined after it (the library's own definitions of them
-// are compiled out by BP_HOST_LATERAL_STATE_IN_STRUCT, a local patch to the library's two headers).
-// Do NOT write `safety.vehicle_speed` inside a binding: it would be rescanned into safety.safety.*.
-#define BP_HOST_CURVATURE_STATE safety.curvature_state
-#define BP_HOST_LAT_ALLOWED() (safety.controls_allowed)
-#define BP_HOST_SPEED_MISMATCH_CHECK() speed_mismatch_check((float)safety.vehicle_speed_2.values[0] / VEHICLE_SPEED_FACTOR)
-#define BP_HOST_LATERAL_STATE_IN_STRUCT
-#define vehicle_speed safety.vehicle_speed
-#define desired_path_angle_last safety.ford_bp_desired_path_angle_last
-#define desired_path_offset_last safety.ford_bp_desired_path_offset_last
-#define ford_bp_angle_mode_engaged safety.ford_bp_angle_mode_engaged
-#define ford_bp_shadow_curvature_raw safety.ford_bp_shadow_curvature_raw
-#define ford_bp_lateral safety_setup.ford_bp_lateral
-#define ford_bp_pinion_curvature safety_setup.ford_bp_pinion_curvature
-#define ford_bp_pinion_params safety_setup.ford_bp_pinion_params
-#include "opendbc/bluepilot_lateral/safety/ford.h"
-#undef ford_bp_lateral
-#undef ford_bp_pinion_curvature
-#undef ford_bp_pinion_params
-#undef vehicle_speed
-#undef desired_path_angle_last
-#undef desired_path_offset_last
-#undef ford_bp_angle_mode_engaged
-#undef ford_bp_shadow_curvature_raw
 
 static void ford_rx_hook(const CANPacket_t *msg) {
   // Update in motion state from standstill signal

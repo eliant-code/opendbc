@@ -19,7 +19,7 @@ static inline bool ford_bp_curvature_rate_lookup_check(int desired_curvature, co
   const BP_HOST_CURVATURE_LIMITS *base = &limits->base;
   bool violation = false;
 
-  const float fudged_speed_lookup = (vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.;
+  const float fudged_speed_lookup = (safety.vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.;
   const int delta_up = (safety_interpolate(limits->curvature_rate_up_lookup, fudged_speed_lookup) * base->curvature_to_can) + 1.;
   const int delta_down = (safety_interpolate(limits->curvature_rate_down_lookup, fudged_speed_lookup) * base->curvature_to_can) + 1.;
 
@@ -27,9 +27,9 @@ static inline bool ford_bp_curvature_rate_lookup_check(int desired_curvature, co
   int highest_desired_curvature = BP_HOST_CURVATURE_STATE.desired_last + ((BP_HOST_CURVATURE_STATE.desired_last > 0) ? delta_up : delta_down);
   int lowest_desired_curvature = BP_HOST_CURVATURE_STATE.desired_last - ((BP_HOST_CURVATURE_STATE.desired_last >= 0) ? delta_down : delta_up);
 
-  if (base->max_curvature_error && ((vehicle_speed.values[0] / VEHICLE_SPEED_FACTOR) > base->curvature_error_min_speed)) {
+  if (base->max_curvature_error && ((safety.vehicle_speed.values[0] / VEHICLE_SPEED_FACTOR) > base->curvature_error_min_speed)) {
     // flipped fudge to avoid false positives
-    const float fudged_speed_error = (vehicle_speed.max / VEHICLE_SPEED_FACTOR) + 1.;
+    const float fudged_speed_error = (safety.vehicle_speed.max / VEHICLE_SPEED_FACTOR) + 1.;
     const int delta_up_relaxed = (safety_interpolate(limits->curvature_rate_up_lookup, fudged_speed_error) * base->curvature_to_can) - 1.;
     const int delta_down_relaxed = (safety_interpolate(limits->curvature_rate_down_lookup, fudged_speed_error) * base->curvature_to_can) - 1.;
 
@@ -64,7 +64,7 @@ static inline bool ford_bp_curvature_rate_lookup_check(int desired_curvature, co
     // MAX_LATERAL_ACCEL used by the ISO path in steer_curvature_cmd_checks (~3.6 m/s^2). Do not
     // merge the two.
     static const float BP_MAX_LATERAL_ACCEL = ISO_LATERAL_ACCEL - (EARTH_G * AVERAGE_ROAD_ROLL);
-    const float fudged_speed = SAFETY_MAX((vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.0, 1.0);
+    const float fudged_speed = SAFETY_MAX((safety.vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.0, 1.0);
     const float max_curvature_accel = BP_MAX_LATERAL_ACCEL / (fudged_speed * fudged_speed);
     const int max_curvature_accel_can = (max_curvature_accel * base->curvature_to_can) + 1.;
     violation |= safety_max_limit_check(desired_curvature, max_curvature_accel_can, -max_curvature_accel_can);

@@ -12,11 +12,7 @@
 // Global Variables
 // ===============================
 
-#ifndef BP_HOST_LATERAL_STATE_IN_STRUCT  // LOCAL PATCH (upstream port)
-bool ford_bp_lateral = false;  // SP safety-param bit 5: BP 4-signal lateral checks instead of stock
-bool ford_bp_pinion_curvature = false;
-const AngleSteeringParams *ford_bp_pinion_params = &ford_pinion_geometry[0];
-#endif
+// LOCAL PATCH (upstream port): this state lives in upstream's per-copy safety / safety_setup structs (declarations.h)
 
 // BluePilot: per-platform geometry for pinion-angle -> curvature conversion (the optional
 // angle_meas source), selected by the 4-bit geometry index in current_safety_param_sp
@@ -44,13 +40,7 @@ const AngleSteeringParams ford_pinion_geometry[FORD_PINION_GEOMETRY_ROWS] = {
   {.slip_factor = -0.00051293030f, .steer_ratio = 17.0f, .wheelbase = 3.270f},    // 12: FORD_RANGER_MK2
 };
 
-#ifndef BP_HOST_LATERAL_STATE_IN_STRUCT  // LOCAL PATCH (upstream port): a host with per-copy safety state keeps these in its state struct
-bool ford_bp_angle_mode_engaged = false;
-int16_t ford_bp_shadow_curvature_raw = 0;  // wire units, scale 1e-6 1/m (LANE_ASSIST_DATA1.md)
-
-int desired_path_angle_last = 0;
-int desired_path_offset_last = 0;
-#endif
+// LOCAL PATCH (upstream port): this state lives in upstream's per-copy safety / safety_setup structs (declarations.h)
 
 
 // ===============================
@@ -61,18 +51,18 @@ static inline bool path_angle_cmd_checks(int desired_path_angle, bool steer_cont
   bool violation = false;
 
   if (steer_control_enabled) {
-    float speed = ((float)vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.;
+    float speed = ((float)safety.vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.;
 
     int delta_path_angle_roc = (safety_interpolate(limits.angle_rate_up_lookup, speed) * limits.angle_deg_to_can) + 1.;
 
-    int highest_desired_path_angle = desired_path_angle_last + delta_path_angle_roc;
-    int lowest_desired_path_angle = desired_path_angle_last - delta_path_angle_roc;
+    int highest_desired_path_angle = safety.ford_bp_desired_path_angle_last + delta_path_angle_roc;
+    int lowest_desired_path_angle = safety.ford_bp_desired_path_angle_last - delta_path_angle_roc;
 
     violation |= safety_max_limit_check(desired_path_angle, highest_desired_path_angle, lowest_desired_path_angle);
     FORD_BP_DBG("path_angle_cmd_checks 1: desired_path_angle: %d desired_path_angle_last: %d highest_desired_path_angle: %d lowest_desired_path_angle: %d violation: %d \n",
-                desired_path_angle, desired_path_angle_last, highest_desired_path_angle, lowest_desired_path_angle, (int)violation);
+                desired_path_angle, safety.ford_bp_desired_path_angle_last, highest_desired_path_angle, lowest_desired_path_angle, (int)violation);
   }
-  desired_path_angle_last = desired_path_angle;
+  safety.ford_bp_desired_path_angle_last = desired_path_angle;
 
   if (!steer_control_enabled) {
     violation |= (desired_path_angle != 0);
@@ -86,19 +76,19 @@ static inline bool path_offset_cmd_checks(int desired_path_offset, bool steer_co
   bool violation = false;
 
   if (steer_control_enabled) {
-    float speed = ((float)vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.;
+    float speed = ((float)safety.vehicle_speed.min / VEHICLE_SPEED_FACTOR) - 1.;
 
     int delta_path_offset_roc = (safety_interpolate(limits.angle_rate_up_lookup, speed) * limits.angle_deg_to_can) + 1.;
 
-    int highest_desired_path_offset = desired_path_offset_last + delta_path_offset_roc;
-    int lowest_desired_path_offset = desired_path_offset_last - delta_path_offset_roc;
+    int highest_desired_path_offset = safety.ford_bp_desired_path_offset_last + delta_path_offset_roc;
+    int lowest_desired_path_offset = safety.ford_bp_desired_path_offset_last - delta_path_offset_roc;
 
     violation |= safety_max_limit_check(desired_path_offset, highest_desired_path_offset, lowest_desired_path_offset);
     FORD_BP_DBG("path_offset_cmd_checks 1: desired_path_offset: %d desired_path_offset_last: %d highest_desired_path_offset: %d lowest_desired_path_offset: %d violation: %d \n",
-                desired_path_offset, desired_path_offset_last, highest_desired_path_offset, lowest_desired_path_offset, (int)violation);
+                desired_path_offset, safety.ford_bp_desired_path_offset_last, highest_desired_path_offset, lowest_desired_path_offset, (int)violation);
 
   }
-  desired_path_offset_last = desired_path_offset;
+  safety.ford_bp_desired_path_offset_last = desired_path_offset;
 
   if (!steer_control_enabled) {
     violation |= (desired_path_offset != 0);
@@ -129,7 +119,7 @@ static inline bool ford_shadow_curvature_error_check(int desired_curvature, bool
                                                const BP_HOST_CURVATURE_LIMITS limits) {
   bool violation = false;
   if (steer_control_enabled &&
-      ((vehicle_speed.values[0] / VEHICLE_SPEED_FACTOR) > limits.curvature_error_min_speed)) {
+      ((safety.vehicle_speed.values[0] / VEHICLE_SPEED_FACTOR) > limits.curvature_error_min_speed)) {
     int lowest_allowed = BP_HOST_CURVATURE_STATE.meas.min - limits.max_curvature_error - 1;
     int highest_allowed = BP_HOST_CURVATURE_STATE.meas.max + limits.max_curvature_error + 1;
     violation = safety_max_limit_check(desired_curvature, highest_allowed, lowest_allowed);
@@ -218,8 +208,8 @@ static inline bool ford_lmc_checks(int desired_curvature, int desired_curvature_
   // wider range by merely setting curvature to 0. Curvature mode always keeps the tight cap,
   // including at curvature == 0 (straight driving, or the reset/human-turn frame) -- path_angle
   // there only trims and amplifies wound-up curvature, never needs the wide range.
-  float path_angle_min_phys = ford_bp_angle_mode_engaged ? FORD_DBC_PATH_ANGLE_MIN : FORD_PATH_ANGLE_MIN;
-  float path_angle_max_phys = ford_bp_angle_mode_engaged ? FORD_DBC_PATH_ANGLE_MAX : FORD_PATH_ANGLE_MAX;
+  float path_angle_min_phys = safety.ford_bp_angle_mode_engaged ? FORD_DBC_PATH_ANGLE_MIN : FORD_PATH_ANGLE_MIN;
+  float path_angle_max_phys = safety.ford_bp_angle_mode_engaged ? FORD_DBC_PATH_ANGLE_MAX : FORD_PATH_ANGLE_MAX;
   const float path_angle_min_scaled = path_angle_min_phys * FORD_PATH_ANGLE_LIMITS.angle_deg_to_can;
   const float path_angle_max_scaled = path_angle_max_phys * FORD_PATH_ANGLE_LIMITS.angle_deg_to_can;
   int path_angle_min_can = (int)path_angle_min_scaled;
@@ -240,8 +230,8 @@ static inline bool ford_lmc_checks(int desired_curvature, int desired_curvature_
   // ordinary curvature mode at zero (straight driving or the reset/human-turn frame), which needs
   // no shadow-curvature check; it's still bounded by the tight path_angle range above and
   // steer_control_enabled's own checks.
-  if ((desired_curvature == 0) && ford_bp_angle_mode_engaged) {
-    const float shadow_curvature_scaled = (float)ford_bp_shadow_curvature_raw * FORD_BP_LKA_SHADOW_RAW_TO_CAN;
+  if ((desired_curvature == 0) && safety.ford_bp_angle_mode_engaged) {
+    const float shadow_curvature_scaled = (float)safety.ford_bp_shadow_curvature_raw * FORD_BP_LKA_SHADOW_RAW_TO_CAN;
     int shadow_curvature_can = (int)shadow_curvature_scaled;
     violation |= ford_shadow_curvature_error_check(shadow_curvature_can, steer_control_enabled, *base);
   }
@@ -303,11 +293,11 @@ static inline bool ford_bp_lmc_tx(bool canfd, unsigned int raw_curvature, unsign
   unsigned int inactive_curvature_rate;
   const char *dbg_prefix;
   if (canfd) {
-    limits = ford_bp_pinion_curvature ? &FORD_CANFD_STEERING_LIMITS_PINION : &FORD_CANFD_STEERING_LIMITS;
+    limits = safety_setup.ford_bp_pinion_curvature ? &FORD_CANFD_STEERING_LIMITS_PINION : &FORD_CANFD_STEERING_LIMITS;
     inactive_curvature_rate = FORD_CANFD_INACTIVE_CURVATURE_RATE;
     dbg_prefix = "CANFD Out";
   } else {
-    limits = ford_bp_pinion_curvature ? &FORD_BP_STEERING_LIMITS_PINION : &FORD_BP_STEERING_LIMITS;
+    limits = safety_setup.ford_bp_pinion_curvature ? &FORD_BP_STEERING_LIMITS_PINION : &FORD_BP_STEERING_LIMITS;
     inactive_curvature_rate = FORD_INACTIVE_CURVATURE_RATE;
     dbg_prefix = "CAN Out";
   }
@@ -326,9 +316,9 @@ static inline bool ford_bp_lmc_tx(bool canfd, unsigned int raw_curvature, unsign
 // was tried first: the panda never receives its own TX, and an RX check for it tripped
 // safety_tick's lagging check and blocked controls car-wide (2026-07-09).
 static inline void ford_bp_lka_tx(const CANPacket_t *msg) {
-  ford_bp_angle_mode_engaged = (msg->data[FORD_BP_LKA_ANGLE_MODE_BYTE] & FORD_BP_LKA_ANGLE_MODE_MASK) != 0U;
+  safety.ford_bp_angle_mode_engaged = (msg->data[FORD_BP_LKA_ANGLE_MODE_BYTE] & FORD_BP_LKA_ANGLE_MODE_MASK) != 0U;
   unsigned int shadow_curvature_raw = (msg->data[FORD_BP_LKA_SHADOW_MSB_BYTE] << 8) | msg->data[FORD_BP_LKA_SHADOW_LSB_BYTE];
-  ford_bp_shadow_curvature_raw = (int16_t)shadow_curvature_raw;
+  safety.ford_bp_shadow_curvature_raw = (int16_t)shadow_curvature_raw;
 }
 
 // BluePilot: optional angle_meas source -- measured curvature from the steering pinion angle (PSCM)
@@ -339,7 +329,7 @@ static inline void ford_bp_lka_tx(const CANPacket_t *msg) {
 // agree. ford_rx_hook skips its yaw block while this source is on.
 static inline void ford_bp_rx_hook(const CANPacket_t *msg) {
   // addr and bus compared directly, not with upstream's msg_matches, which not every host has
-  if ((msg->addr == FORD_SteeringPinion_Data) && (msg->bus == FORD_MAIN_BUS) && ford_bp_pinion_curvature) {
+  if ((msg->addr == FORD_SteeringPinion_Data) && (msg->bus == FORD_MAIN_BUS) && safety_setup.ford_bp_pinion_curvature) {
     // Signal: StePinComp_An_Est, 22|15@0+ (0.1,-1600) deg
     int angle_raw = ((msg->data[2] & 0x7FU) << 8) | msg->data[3];
     float pinion_angle_deg = ((float)angle_raw * 0.1f) - 1600.0f;
@@ -347,11 +337,11 @@ static inline void ford_bp_rx_hook(const CANPacket_t *msg) {
     // angle -> curvature via vehicle model (matches VehicleModel.curvature_factor);
     // sign: firmware angle_meas is Ford wire convention (the yaw block uses +yaw/v), and
     // pinion angle correlates +0.97 with wire desired curvature on real frames -> positive.
-    float speed = SAFETY_MAX(vehicle_speed.values[0] / VEHICLE_SPEED_FACTOR, 0.1);
-    float curvature_factor = get_curvature_factor(speed, *ford_bp_pinion_params);
-    float current_curvature = pinion_angle_rad * curvature_factor / ford_bp_pinion_params->steer_ratio;
+    float speed = SAFETY_MAX(safety.vehicle_speed.values[0] / VEHICLE_SPEED_FACTOR, 0.1);
+    float curvature_factor = get_curvature_factor(speed, *safety_setup.ford_bp_pinion_params);
+    float current_curvature = pinion_angle_rad * curvature_factor / safety_setup.ford_bp_pinion_params->steer_ratio;
     // convert current curvature into units on CAN for comparison with desired curvature
-    update_sample(&BP_HOST_CURVATURE_STATE.meas, ROUND(current_curvature * FORD_STEERING_LIMITS.curvature_to_can));
+    update_sample(&BP_HOST_CURVATURE_STATE.meas, ROUND(current_curvature * BP_HOST_CURVATURE_TO_CAN));
   }
 }
 
@@ -365,23 +355,23 @@ static inline void ford_bp_rx_hook(const CANPacket_t *msg) {
 // config, so a pinion hiccup can't disable controls for users who never consume the message.
 static inline bool ford_bp_init(uint16_t param_sp) {
   const uint16_t FORD_PARAM_SP_BP_LATERAL = 32;
-  ford_bp_lateral = GET_FLAG(param_sp, FORD_PARAM_SP_BP_LATERAL);
+  safety_setup.ford_bp_lateral = GET_FLAG(param_sp, FORD_PARAM_SP_BP_LATERAL);
   const uint16_t FORD_PARAM_SP_STEER_ANGLE_CURVATURE = 1;
   // Pinion measurement is only valid with the BP checks: the stock error band (100) was tuned for the
   // yaw source and the stock Python path clips against yaw-derived curvature.
-  bool pinion_enabled = ford_bp_lateral && GET_FLAG(param_sp, FORD_PARAM_SP_STEER_ANGLE_CURVATURE);
+  bool pinion_enabled = safety_setup.ford_bp_lateral && GET_FLAG(param_sp, FORD_PARAM_SP_STEER_ANGLE_CURVATURE);
   const uint16_t pinion_geometry_index = (param_sp >> 1) & 0xFU;
   if ((pinion_geometry_index == 0U) || (pinion_geometry_index > FORD_PINION_GEOMETRY_COUNT)) {
     pinion_enabled = false;
   }
-  ford_bp_pinion_curvature = pinion_enabled;
-  ford_bp_pinion_params = pinion_enabled ? &ford_pinion_geometry[pinion_geometry_index] : &ford_pinion_geometry[0];
+  safety_setup.ford_bp_pinion_curvature = pinion_enabled;
+  safety_setup.ford_bp_pinion_params = pinion_enabled ? &ford_pinion_geometry[pinion_geometry_index] : &ford_pinion_geometry[0];
 
   // start from a clean BP lateral state, as set_safety_hooks does for upstream's (desired_angle_last
   // etc.), so a re-init never checks against a previous session's commands. The angle-mode flag is
   // set again by the next Lane_Assist_Data1 frame.
-  desired_path_angle_last = 0;
-  desired_path_offset_last = 0;
-  ford_bp_angle_mode_engaged = false;
-  return ford_bp_pinion_curvature;
+  safety.ford_bp_desired_path_angle_last = 0;
+  safety.ford_bp_desired_path_offset_last = 0;
+  safety.ford_bp_angle_mode_engaged = false;
+  return safety_setup.ford_bp_pinion_curvature;
 }

@@ -56,11 +56,7 @@
 // BluePilot: optional angle_meas source, measured curvature from the steering pinion angle
 // (PSCM) via the vehicle model, selected by the geometry index in current_safety_param_sp
 // bits 1-4. Default off = stock yaw-sourced angle_meas. See ford_bp_init in ford.h.
-#ifndef BP_HOST_LATERAL_STATE_IN_STRUCT  // LOCAL PATCH (upstream port)
-extern bool ford_bp_lateral;
-extern bool ford_bp_pinion_curvature;
-extern const AngleSteeringParams *ford_bp_pinion_params;
-#endif
+// LOCAL PATCH (upstream port): this state lives in upstream's per-copy safety / safety_setup structs (declarations.h)
 extern const AngleSteeringParams ford_pinion_geometry[FORD_PINION_GEOMETRY_ROWS];
 
 // BluePilot: angle_mode_engaged + shadow_curvature, read out of Lane_Assist_Data1's unused
@@ -73,16 +69,10 @@ extern const AngleSteeringParams ford_pinion_geometry[FORD_PINION_GEOMETRY_ROWS]
 #define FORD_BP_LKA_SHADOW_LSB_BYTE 6U
 // shadow curvature raw units (1e-6 1/m) to curvature CAN units (2e-5 1/m)
 #define FORD_BP_LKA_SHADOW_RAW_TO_CAN 0.05f
-#ifndef BP_HOST_LATERAL_STATE_IN_STRUCT  // LOCAL PATCH (upstream port): a host with per-copy safety state keeps these in its state struct
-extern bool ford_bp_angle_mode_engaged;
-extern int16_t ford_bp_shadow_curvature_raw;  // wire units, scale 1e-6 1/m (LANE_ASSIST_DATA1.md)
-#endif
+// LOCAL PATCH (upstream port): this state lives in upstream's per-copy safety / safety_setup structs (declarations.h)
 
 // last commanded values for the path_angle / path_offset rate-of-change checks
-#ifndef BP_HOST_LATERAL_STATE_IN_STRUCT  // LOCAL PATCH (upstream port)
-extern int desired_path_angle_last;
-extern int desired_path_offset_last;
-#endif
+// LOCAL PATCH (upstream port): this state lives in upstream's per-copy safety / safety_setup structs (declarations.h)
 
 // ===============================
 // Function Declarations
