@@ -39,6 +39,16 @@ PINNED = {
     ("car/ford/fordcan.py", "create_lat_ctl_msg"): "59eec05e601ac97e",       # bluepilot_lateral/can/fordcan_ext.py
     ("car/ford/fordcan.py", "create_lat_ctl2_msg"): "1653ca5622eccc77",      # bluepilot_lateral/can/fordcan_ext.py
   },
+  # LOCAL PATCH: upstream commaai/opendbc (Nov 2026). The fordcan bodies equal sunnypilot's pins. Upstream's
+  # steer_curvature_cmd_checks was reviewed against ford_bp_curvature_cmd_checks: the gates, cap, message-rate
+  # check, zero-when-not-steering and the max_steer_power == 0 branch match; upstream's ISO accel/jerk and
+  # error-band section is the part the copy replaces with ford_bp_curvature_rate_lookup_check.
+  "upstream": {
+    ("safety/lateral.h", "steer_curvature_cmd_checks"): "3cc22dcb6e9a7f08",  # ford_bp_curvature_cmd_checks, bluepilot_lateral/safety/lateral.h
+    ("car/ford/fordcan.py", "create_lka_msg"): "c7e38e4f0215dcf4",           # bluepilot_lateral/can/fordcan_ext.py
+    ("car/ford/fordcan.py", "create_lat_ctl_msg"): "f00a87f31389cb91",       # bluepilot_lateral/can/fordcan_ext.py
+    ("car/ford/fordcan.py", "create_lat_ctl2_msg"): "1653ca5622eccc77",      # bluepilot_lateral/can/fordcan_ext.py
+  },
 }
 
 

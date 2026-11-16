@@ -17,11 +17,11 @@ jobs:
 
     - name: BluePilot library safety tests (incl. pinion geometry table)
       if: always()
-      run: source setup.sh && python -m pytest opendbc/bluepilot_lateral/safety/tests -q -rf
+      run: source setup.sh && python -m unittest discover -s opendbc/bluepilot_lateral/safety/tests -t .
 
     - name: BluePilot library python tests
       if: always()
-      run: source setup.sh && python -m pytest opendbc/bluepilot_lateral/tests -q -rf
+      run: source setup.sh && python -m unittest discover -s opendbc/bluepilot_lateral/tests -t .
 
     - name: upstream safety suite (all brands, coverage)
       if: always()
