@@ -36,7 +36,7 @@ elif True:  # TEST-ONLY local patch: upstream opendbc host, same shape as StarPi
   from ..hosts.starpilot.safety_param import (BP_SAFETY_PARAM_SHIFT, bp_safety_param, init_ford_safety_param_starpilot,
                                               lateral_inputs_required as lateral_inputs_required_starpilot)
 
-  NAME = "starpilot"
+  NAME = "upstream"  # TEST-ONLY local patch: StarPilot's adapter on upstream opendbc (own pins in the upstream-copies test)
   SET_SAFETY_PARAM = None  # no second param: the bits ride the Ford param (ford_param)
   SET_CONTROLS_ALLOWED_LAT = None  # no lateral-only setter: AOL is off in these tests, so lateral follows controls_allowed
 
@@ -70,7 +70,7 @@ def set_safety_param(safety, bits: int) -> None:
 def ford_param(base: int, bits: int) -> int:
   """The Ford safety param set_safety_hooks takes for these startup bits: unchanged on a host with a second
   param, the bits shifted in on StarPilot."""
-  return base | (bits << BP_SAFETY_PARAM_SHIFT) if NAME == "starpilot" else base
+  return base | (bits << BP_SAFETY_PARAM_SHIFT) if NAME in ("starpilot", "upstream") else base
 
 
 def set_controls_allowed_lat(safety, allowed: bool) -> None:

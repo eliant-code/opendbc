@@ -1,9 +1,9 @@
 name: bluepilot port checks
 
-# Test-only branch (bp-lateral-upstream-ci): the install branch, bp-lateral-upstream, is not changed by this.
+# Runs on the install branch and the test branch.
 on:
   push:
-    branches: [bp-lateral-upstream-ci]
+    branches: [bp-lateral-upstream, bp-lateral-upstream-ci]
   workflow_dispatch:
 
 jobs:
@@ -17,11 +17,11 @@ jobs:
 
     - name: BluePilot library safety tests (incl. pinion geometry table)
       if: always()
-      run: source setup.sh && python -m pytest opendbc/bluepilot_lateral/safety/tests -q -rf
+      run: source setup.sh && python -m unittest discover -s opendbc/bluepilot_lateral/safety/tests -t .
 
     - name: BluePilot library python tests
       if: always()
-      run: source setup.sh && python -m pytest opendbc/bluepilot_lateral/tests -q -rf
+      run: source setup.sh && python -m unittest discover -s opendbc/bluepilot_lateral/tests -t .
 
     - name: upstream safety suite (all brands, coverage)
       if: always()
