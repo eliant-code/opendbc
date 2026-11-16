@@ -3,7 +3,7 @@ name: bluepilot port checks
 # Runs on the install branch and the test branch.
 on:
   push:
-    branches: [bp-lateral-upstream, bp-lateral-upstream-ci]
+    branches: [elipilot, bp-lateral-upstream, bp-lateral-upstream-ci]
   workflow_dispatch:
 
 jobs:
