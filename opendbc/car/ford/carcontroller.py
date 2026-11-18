@@ -3,6 +3,7 @@ import numpy as np
 from opendbc.can import CANPacker
 from opendbc.car import ACCELERATION_DUE_TO_GRAVITY, Bus, DT_CTRL, apply_hysteresis, structs
 from opendbc.car.ford import fordcan
+from opendbc.car.ford.intelligent_speed import iacc_request
 from opendbc.car.ford.values import CarControllerParams, FordFlags, CAR
 from opendbc.car.interfaces import CarControllerBase, V_CRUISE_MAX
 # BluePilot lateral. Upstream has no CarControl extension and no second safety param, the same shape as the
@@ -58,6 +59,8 @@ class CarController(CarControllerBase):
   def bp_init(self):
     """BluePilot: (re)build the lateral from the startup bits in CP. card.py calls this after it sets them."""
     self.bp = BluePilotLateral(self.CP, self.packer, self.CAN)
+    # EliPilot: IPMA_Data2 is in the safety TX list (camera's copy blocked) only for CAN openpilot longitudinal
+    self.iacc_relay = self.CP.openpilotLongitudinalControl and not (self.CP.flags & FordFlags.CANFD)
 
   def update(self, CC, CS, now_nanos):
     can_sends = []
@@ -166,6 +169,12 @@ class CarController(CarControllerBase):
       self.accel = accel
       self.gas = gas
 
+    # EliPilot: in CAN openpilot longitudinal the safety mode blocks the camera's IPMA_Data2, so send it on, once per
+    # camera message, with the iACC set-speed request filled in (intelligent_speed.py)
+    if self.iacc_relay and CS.ipma_data2_new:
+      iacc, iacc_unit = iacc_request(CS.ipma_data2_stock_values, CS.speed_sign_follow, CS.speed_sign_tolerance_kph)
+      can_sends.append(fordcan.create_ipma_data2_msg(self.packer, self.CAN, CS.ipma_data2_stock_values, iacc, iacc_unit))
+
     ### ui ###
     send_ui = (self.main_on_last != main_on) or (self.lkas_enabled_last != CC.latActive) or (self.steer_alert_last != steer_alert)
     # send lkas ui msg at 1Hz or if ui state changes
@@ -181,7 +190,8 @@ class CarController(CarControllerBase):
       show_distance_bars = self.frame - self.distance_bar_frame < 400
       can_sends.append(fordcan.create_acc_ui_msg(self.packer, self.CAN, self.CP, main_on, CC.latActive,
                                                  fcw_alert, CS.out.cruiseState.standstill, show_distance_bars,
-                                                 hud_control, CS.acc_tja_status_stock_values))
+                                                 hud_control, CS.acc_tja_status_stock_values,
+                                                 iacc_lamp=(1 if main_on else 0) if self.iacc_relay and CS.speed_sign_follow else None))
 
     self.main_on_last = main_on
     self.lkas_enabled_last = CC.latActive

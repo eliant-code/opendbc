@@ -2,6 +2,7 @@ from opendbc.can import CANDefine, CANParser
 from opendbc.car import Bus, create_button_events, structs
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car.ford.fordcan import CanBus
+from opendbc.car.ford.intelligent_speed import learn_tolerance
 from opendbc.car.ford.values import DBC, CarControllerParams, FordFlags
 from opendbc.car.interfaces import CarStateBase
 
@@ -19,6 +20,11 @@ class CarState(CarStateBase):
 
     self.distance_button = 0
     self.lc_button = 0
+    # EliPilot: iACC set-speed request in openpilot longitudinal (intelligent_speed.py). speed_sign_follow is set by
+    # openpilot at car start (FordFollowSpeedSigns); the tolerance is learned from the camera, and openpilot saves
+    # and restores it across drives (FordSpeedSignTolerance).
+    self.speed_sign_follow = False
+    self.speed_sign_tolerance_kph: int | None = None
 
   def update(self, can_parsers) -> structs.CarState:
     cp = can_parsers[Bus.pt]
@@ -108,6 +114,13 @@ class CarState(CarStateBase):
     # Stock values from IPMA so that we can retain some stock functionality
     self.acc_tja_status_stock_values = cp_cam.vl["ACCDATA_3"]
     self.lkas_status_stock_values = cp_cam.vl["IPMA_Data"]
+    # EliPilot: camera IPMA_Data2 (1 Hz, optional) for the iACC set-speed request; new_ = arrived this frame
+    self.ipma_data2_stock_values = cp_cam.vl["IPMA_Data2"]
+    self.ipma_data2_new = len(cp_cam.vl_all["IPMA_Data2"]["IsaVLim_D_Rq"]) > 0
+    if self.ipma_data2_new:
+      tolerance = learn_tolerance(self.ipma_data2_stock_values)
+      if tolerance is not None:
+        self.speed_sign_tolerance_kph = tolerance
 
     ret.buttonEvents = [
       *create_button_events(self.distance_button, prev_distance_button, {1: ButtonType.gapAdjustCruise}),
@@ -120,5 +133,6 @@ class CarState(CarStateBase):
   def get_can_parsers(CP):
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).main),
-      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).camera),
+      # EliPilot: IPMA_Data2 (1 Hz) is optional, so a car without it never makes the parser invalid
+      Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [("IPMA_Data2", float("nan"))], CanBus(CP).camera),
     }

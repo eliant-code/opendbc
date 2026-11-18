@@ -126,7 +126,7 @@ def create_acc_msg(packer, CAN: CanBus, long_active: bool, gas: float, accel: fl
 
 
 def create_acc_ui_msg(packer, CAN: CanBus, CP, main_on: bool, enabled: bool, fcw_alert: bool, standstill: bool,
-                      show_distance_bars: bool, hud_control, stock_values: dict):
+                      show_distance_bars: bool, hud_control, stock_values: dict, iacc_lamp: int | None = None):
   """
   Creates a CAN message for the Ford IPC adaptive cruise, forward collision warning and traffic jam
   assist status.
@@ -197,11 +197,31 @@ def create_acc_ui_msg(packer, CAN: CanBus, CP, main_on: bool, enabled: bool, fcw
       "AccTGap_D_Dsply": hud_control.leadDistanceBars,            # Time gap
     })
 
+  # EliPilot: iACC lamp, as the camera shows it in Ford mode while cruise is on
+  if iacc_lamp is not None:
+    values["IaccLamp_D_Rq"] = iacc_lamp
+
   # Forwards FCW alert from IPMA
   if fcw_alert:
     values["FcwVisblWarn_B_Rq"] = 1  # FCW visible alert
 
   return packer.make_can_msg("ACCDATA_3", CAN.main, values)
+
+
+def create_ipma_data2_msg(packer, CAN: CanBus, stock_values: dict, iacc_vlim: int, iacc_vlim_unit: int):
+  """
+  EliPilot: the camera's IPMA_Data2 (speed limit, TSR and iACC), passed through unchanged except for the iACC
+  set-speed request (opendbc/car/ford/intelligent_speed.py). LongCtrlEnbl_D_Rq is always 0, as the camera sends it.
+
+  Frequency is 1Hz, one per camera message.
+  """
+  values = {s: stock_values[s] for s in stock_values}
+  values.update({
+    "IaccVLim_D_Rq": iacc_vlim,
+    "IaccVLimUnit_D_Rq": iacc_vlim_unit,
+    "LongCtrlEnbl_D_Rq": 0,
+  })
+  return packer.make_can_msg("IPMA_Data2", CAN.main, values)
 
 
 def create_lkas_ui_msg(packer, CAN: CanBus, main_on: bool, enabled: bool, steer_alert: bool, hud_control,

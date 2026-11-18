@@ -17,6 +17,7 @@
 #define FORD_LateralMotionControl  0x3D3U   // TX by OP, Lateral Control message
 #define FORD_LateralMotionControl2 0x3D6U   // TX by OP, alternate Lateral Control message
 #define FORD_IPMA_Data             0x3D8U   // TX by OP, IPMA and LKAS user interface
+#define FORD_IPMA_Data2            0x3D9U   // TX by OP (EliPilot, openpilot longitudinal), speed limit / iACC set-speed request
 
 // CAN bus numbers.
 #define FORD_MAIN_BUS 0U
@@ -185,6 +186,26 @@ static bool ford_tx_hook(const CANPacket_t *msg) {
 
   bool tx = true;
 
+  // EliPilot: the camera's IPMA_Data2, sent on by openpilot with the intelligent-cruise set-speed request filled in
+  // (Ford's own camera stops requesting once openpilot controls speed). The request only moves the car's cruise
+  // set speed, as the steering-wheel buttons do. The camera's speed-limit signal is 1 Hz, too slow to be an RX
+  // check here, so the request is bounded on its own: no request (254/255), or 30-135 km/h. Nothing else may
+  // be requested through this message.
+  if (msg->addr == FORD_IPMA_Data2) {
+    // Signal: IaccVLim_D_Rq
+    unsigned int iacc_vlim = msg->data[2];
+    // Signal: IaccVLimUnit_D_Rq (1 = km/h)
+    unsigned int iacc_vlim_unit = (msg->data[1] >> 2) & 0x3U;
+    // Signal: LongCtrlEnbl_D_Rq
+    unsigned int long_ctrl_enbl = msg->data[5] & 0x7U;
+
+    bool no_request = (iacc_vlim == 254U) || (iacc_vlim == 255U);
+    bool kph_request = (iacc_vlim_unit == 1U) && (iacc_vlim >= 30U) && (iacc_vlim <= 135U);
+    if ((!no_request && !kph_request) || (long_ctrl_enbl != 0U)) {
+      tx = false;
+    }
+  }
+
   // Safety check for ACCDATA accel and brake requests
   if (msg->addr == FORD_ACCDATA) {
     // Signal: AccPrpl_A_Rq
@@ -351,6 +372,7 @@ static safety_config ford_init(uint16_t param) {
     FORD_COMMON_TX_MSGS
     {FORD_ACCDATA, 0, 8, .check_relay = true},
     {FORD_LateralMotionControl, 0, 8, .check_relay = true},
+    {FORD_IPMA_Data2, 0, 8, .check_relay = true},  // EliPilot: replaces the camera's (iACC set-speed request)
   };
 
   // EliPilot: CAN stock ACC (openpilot longitudinal toggle off). Without ACCDATA here, the camera's ACCDATA is

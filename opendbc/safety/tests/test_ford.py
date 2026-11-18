@@ -18,6 +18,7 @@ MSG_Lane_Assist_Data1 = 0x3CA      # TX by OP, Lane Keep Assist
 MSG_LateralMotionControl = 0x3D3   # TX by OP, Lateral Control message
 MSG_LateralMotionControl2 = 0x3D6  # TX by OP, alternate Lateral Control message
 MSG_IPMA_Data = 0x3D8              # TX by OP, IPMA and LKAS user interface
+MSG_IPMA_Data2 = 0x3D9             # TX by OP (EliPilot, CAN openpilot longitudinal), speed limit / iACC set-speed request
 
 
 class Buttons:
@@ -516,13 +517,30 @@ class TestFordLongitudinalSafety(TestFordLongitudinalSafetyBase):
 
   TX_MSGS = [
     [MSG_Steering_Data_FD1, 0], [MSG_Steering_Data_FD1, 2], [MSG_ACCDATA, 0], [MSG_ACCDATA_3, 0], [MSG_Lane_Assist_Data1, 0],
-    [MSG_LateralMotionControl, 0], [MSG_IPMA_Data, 0],
+    [MSG_LateralMotionControl, 0], [MSG_IPMA_Data, 0], [MSG_IPMA_Data2, 0],
   ]
   RELAY_MALFUNCTION_ADDRS = {0: (MSG_ACCDATA, MSG_ACCDATA_3, MSG_Lane_Assist_Data1, MSG_LateralMotionControl,
-                                 MSG_IPMA_Data)}
+                                 MSG_IPMA_Data, MSG_IPMA_Data2)}
 
   FWD_BLACKLISTED_ADDRS = {2: [MSG_ACCDATA, MSG_ACCDATA_3, MSG_Lane_Assist_Data1, MSG_LateralMotionControl,
-                               MSG_IPMA_Data]}
+                               MSG_IPMA_Data, MSG_IPMA_Data2]}
+
+  def _ipma_data2_msg(self, iacc_vlim: int, unit: int, long_ctrl_enbl: int = 0):
+    values = {"IaccVLim_D_Rq": iacc_vlim, "IaccVLimUnit_D_Rq": unit, "LongCtrlEnbl_D_Rq": long_ctrl_enbl,
+              "IsaVLim_D_Rq": 50, "IsaVLimUnit_D_Rq": 1}
+    return self.packer.make_can_msg_safety("IPMA_Data2", 0, values)
+
+  def test_iacc_set_speed_request(self):
+    # EliPilot: no request (254/255) or a km/h request of 30-135, never anything in LongCtrlEnbl_D_Rq,
+    # regardless of controls_allowed (it only moves the car's cruise set speed, like the camera's own request)
+    for controls_allowed in (True, False):
+      self.safety.set_controls_allowed(controls_allowed)
+      for unit in range(4):
+        for iacc_vlim in range(256):
+          for long_ctrl_enbl in (0, 1, 7):
+            should_tx = (iacc_vlim in (254, 255) or (unit == 1 and 30 <= iacc_vlim <= 135)) and long_ctrl_enbl == 0
+            self.assertEqual(should_tx, self._tx(self._ipma_data2_msg(iacc_vlim, unit, long_ctrl_enbl)),
+                             (controls_allowed, unit, iacc_vlim, long_ctrl_enbl))
 
 
 class TestFordCANFDLongitudinalSafety(TestFordLongitudinalSafetyBase):
